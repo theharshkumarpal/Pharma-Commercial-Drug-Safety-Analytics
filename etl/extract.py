@@ -31,12 +31,12 @@ log = logging.getLogger(__name__)
 # Target drugs — brand name used for API query, generic stored too
 # ------------------------------------------------------------------
 DRUGS = [
-    {"brand": "adderall",     "generic": "amphetamine"},
-    {"brand": "methylphenidate", "generic": "methylphenidate"},
-    {"brand": "alprazolam",   "generic": "alprazolam"},
-    {"brand": "escitalopram", "generic": "escitalopram"},
-    {"brand": "olanzapine",   "generic": "olanzapine"},
-    {"brand": "quetiapine",   "generic": "quetiapine"},
+    {"brand": "adderall",        "generic": "amphetamine"},
+    {"brand": "ritalin",         "generic": "methylphenidate"},
+    {"brand": "xanax",           "generic": "alprazolam"},
+    {"brand": "lexapro",         "generic": "escitalopram"},
+    {"brand": "zyprexa",         "generic": "olanzapine"},
+    {"brand": "seroquel",        "generic": "quetiapine"},
 ]
 
 BASE_URL   = "https://api.fda.gov/drug/event.json"

@@ -179,5 +179,32 @@ class TestIndependentAudit(unittest.TestCase):
         py_net = round(float(self.df_csv["net_sales_usd"].sum()), 2)
         self.assertEqual(sql_net, py_net, f"SQL Net ({sql_net}) != Python Net ({py_net})")
 
+    def test_etl_age_and_weight_normalization(self):
+        """Audit 10: Age and weight unit conversion logic."""
+        from etl.transform_load import _normalize_age_years, _normalize_weight_kg
+        # Year code 801
+        self.assertEqual(_normalize_age_years("45", "801"), 45.0)
+        # Month code 802
+        self.assertEqual(_normalize_age_years("24", "802"), 2.0)
+        # Decade code 800
+        self.assertEqual(_normalize_age_years("5", "800"), 50.0)
+        # Weight in kg
+        self.assertEqual(_normalize_weight_kg("70"), 70.0)
+        # Weight in lbs
+        self.assertAlmostEqual(_normalize_weight_kg("150", "lbs"), 68.04, delta=0.01)
+
+    def test_etl_drug_mappings(self):
+        """Audit 11: Drug mappings in extract.py and topup_etl.py."""
+        from topup_etl import TOPUP_DRUGS
+        from etl.extract import DRUGS
+        # Klonopin must map to clonazepam
+        klonopin = next(d for d in TOPUP_DRUGS if d["brand"] == "klonopin")
+        self.assertEqual(klonopin["generic"], "clonazepam")
+        # Celexa must map to citalopram
+        celexa = next(d for d in TOPUP_DRUGS if d["brand"] == "celexa")
+        self.assertEqual(celexa["generic"], "citalopram")
+        # Primary drugs count
+        self.assertEqual(len(DRUGS), 6)
+
 if __name__ == "__main__":
     unittest.main()

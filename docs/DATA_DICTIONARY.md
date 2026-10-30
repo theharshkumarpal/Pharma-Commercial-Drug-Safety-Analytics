@@ -55,8 +55,8 @@ The analytical repository implements a Kimball-style dimensional star schema opt
 | `gross_sales_usd` | `NUMERIC(12,2)` | No | `units_ordered * WAC` | Top-line invoiced sales volume before adjustments. |
 | `return_value_usd` | `NUMERIC(12,2)` | No | `units_returned * Net_Price` | Total dollar value refunded for returned inventory. |
 | `net_sales_usd` | `NUMERIC(12,2)` | No | `Gross - Returns - Discounts` | Realized recognized revenue adhering to GTN commercial standard. |
-| `cogs_usd` | `NUMERIC(12,2)` | No | `ABS(net_units) * Unit_Cost` | Cost of Goods Sold (active pharmaceutical ingredient + packaging). |
-| `gross_margin_usd` | `NUMERIC(12,2)` | No | `net_sales_usd - cogs_usd` | Gross profit contribution after manufacturing costs. |
+| `cogs_usd` | `NUMERIC(12,2)` | No | `net_units * Unit_Cost` | Cost of Goods Sold (signed: positive for sales, negative for return reversals). |
+| `gross_margin_usd` | `NUMERIC(12,2)` | No | `net_sales_usd - cogs_usd` | Gross profit contribution after manufacturing costs (exact reconciliation). |
 | `return_reason` | `VARCHAR(100)` | Yes | Return Reason Code | Categorical tag (e.g., `Damaged in Transit`, `Recall / Batch Expiry`). |
 
 ---

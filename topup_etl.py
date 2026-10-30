@@ -9,9 +9,9 @@ from etl.transform_load import transform_load_drug
 
 TOPUP_DRUGS = [
     {"brand": "lexapro",      "generic": "escitalopram oxalate"},
-    {"brand": "celexa",       "generic": "escitalopram"},
+    {"brand": "celexa",       "generic": "citalopram"},
     {"brand": "zyprexa",      "generic": "olanzapine"},
-    {"brand": "klonopin",     "generic": "alprazolam"},
+    {"brand": "klonopin",     "generic": "clonazepam"},
     {"brand": "quetiapine",   "generic": "quetiapine fumarate"},
 ]
 

@@ -133,7 +133,7 @@ def get_top_reactions(drug_name, limit=15):
 
 def get_reports_over_time(drug_name):
     return query("""
-        SELECT DATE_TRUNC('quarter', r.receipt_date) AS quarter, COUNT(*) AS n
+        SELECT DATE_TRUNC('quarter', r.receipt_date) AS quarter, COUNT(DISTINCT r.id) AS n
         FROM reports r
         JOIN drugs d ON d.report_id = r.id
         WHERE d.drug_role = '1'

@@ -10,8 +10,12 @@ import re
 import logging
 from datetime import datetime, date
 from dotenv import load_dotenv
-import psycopg2
-from psycopg2.extras import execute_values
+try:
+    import psycopg2
+    from psycopg2.extras import execute_values
+except ImportError:
+    psycopg2 = None
+    execute_values = None
 
 load_dotenv()
 
@@ -71,6 +75,50 @@ def _safe_float(val):
         return None
 
 
+def _normalize_age_years(val, unit_code):
+    """
+    Normalizes patient age to years based on openFDA age unit codes:
+      800: Decade
+      801: Year
+      802: Month
+      803: Week
+      804: Day
+      805: Hour
+    """
+    f = _safe_float(val)
+    if f is None:
+        return None
+    unit = str(unit_code).strip() if unit_code else "801"
+    if unit == "800":
+        return round(f * 10.0, 1)
+    elif unit == "801" or not unit_code:
+        return round(f, 1)
+    elif unit == "802":
+        return round(f / 12.0, 1)
+    elif unit == "803":
+        return round(f / 52.143, 1)
+    elif unit == "804":
+        return round(f / 365.25, 1)
+    elif unit == "805":
+        return round(f / 8766.0, 2)
+    return round(f, 1)
+
+
+def _normalize_weight_kg(val, unit_code=None):
+    """
+    Normalizes patient weight to kilograms.
+    In openFDA FAERS, patientweight is typically reported in kg.
+    If pounds are reported (unit code 002 or lbs), converts to kg.
+    """
+    f = _safe_float(val)
+    if f is None:
+        return None
+    unit = str(unit_code).strip().lower() if unit_code else "kg"
+    if unit in ("lbs", "lb", "002"):
+        return round(f * 0.453592, 2)
+    return round(f, 2)
+
+
 def _normalize_drug_name(name):
     if not name:
         return None
@@ -102,14 +150,15 @@ def transform_report(raw, drug_brand):
         "reporter_country":        raw.get("occurcountry"),
         "reporter_qualification":  REPORTER_MAP.get(
             str(raw.get("primarysource", {}).get("qualification", "")), None),
-        "outcome": raw.get("patient", {}).get("patientdeath", {}).get("patientdeathdate"),
+        # Do not store death date as clinical outcome; capture general reaction outcome or fatal status
+        "outcome": "fatal" if _flag(raw.get("seriousnessdeath")) else None,
     }
 
     pt = raw.get("patient", {})
     patient = {
-        "age_years": _safe_float(pt.get("patientonsetage")),
+        "age_years": _normalize_age_years(pt.get("patientonsetage"), pt.get("patientonsetageunit")),
         "sex":       SEX_MAP.get(str(pt.get("patientsex", "")), None),
-        "weight_kg": _safe_float(pt.get("patientweight")),
+        "weight_kg": _normalize_weight_kg(pt.get("patientweight")),
     }
 
     raw_drugs = pt.get("drug", [])
@@ -241,13 +290,18 @@ def transform_load_drug(raw_records, drug_brand):
     finally:
         conn.close()
 
+    final_status = "complete" if stats["errors"] == 0 else ("partial_error" if stats["loaded"] > 0 else "error")
     with log_conn.cursor() as log_cur:
         log_cur.execute("""
             UPDATE etl_runs
             SET rows_loaded = %s, rows_skipped = %s,
-                status = 'complete', completed_at = NOW()
+                status = %s, error_message = %s, completed_at = NOW()
             WHERE id = %s
-        """, (stats["loaded"], stats["skipped"], etl_run_id))
+        """, (
+            stats["loaded"], stats["skipped"], final_status,
+            f"{stats['errors']} record(s) failed during load" if stats["errors"] > 0 else None,
+            etl_run_id
+        ))
     log_conn.close()
 
     log.info("%(d)s: loaded=%(l)s skipped=%(s)s errors=%(e)s", {

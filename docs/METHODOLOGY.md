@@ -80,9 +80,11 @@ Accounts are scored using quartile ranks ($1$ to $4$) and segmented into:
 1. **Naive Persistence:** $\hat{Y}_{t+h} = Y_T$ (Baseline 1).
 2. **Rolling 6-Month Moving Average:** $\hat{Y}_{t+h} = \frac{1}{6} \sum_{i=0}^5 Y_{T-i}$ (Baseline 2).
 3. **SARIMAX(1,1,1):** Auto-regressive integrated moving average.
-4. **Holt-Winters Exponential Smoothing:** Additive damped trend without seasonal multiplication.
+4. **Holt-Winters Exponential Smoothing:** Damped additive trend without seasonal component (`trend="add", damped_trend=True, seasonal=None`).
 
-### 4.3 Evaluation Metrics
+### 4.3 Evaluation Metrics & Test-Set Interpretation
 - **Mean Absolute Error (MAE):** $\frac{1}{n} \sum |Y_t - \hat{Y}_t|$
 - **Root Mean Squared Error (RMSE):** $\sqrt{\frac{1}{n} \sum (Y_t - \hat{Y}_t)^2}$
 - **Mean Absolute Percentage Error (MAPE):** $\frac{100\%}{n} \sum \left| \frac{Y_t - \hat{Y}_t}{Y_t} \right|$
+
+> **Important Analytical Note on Forecast Accuracy:** The reported **11.55% MAPE** represents an empirical backtest evaluation on a specific six-month out-of-sample test horizon (H2 2025). It is not an unconditional guarantee of future predictive accuracy, as real-world pharmaceutical demand is subject to regulatory interventions, patent expirations, loss of exclusivity (LOE), and payer formulary shifts.

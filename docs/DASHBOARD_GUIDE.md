@@ -1,6 +1,7 @@
 # Power BI Commercial Dashboard Architecture & Implementation Guide
 
 **Dashboard Suite:** Global Pharmaceutical Commercial Performance & Market Analytics  
+**Implementation Status:** DAX Measures Library (`dashboards/powerbi/dax_measures.txt`) and 6-Page Executive Wireframe Specification. *(Note: Binary `.pbix` authoring requires Windows Power BI Desktop; this guide provides the complete blueprint for loading the Star Schema and applying the measures).*  
 **Target User Persona:** VP of Commercial Strategy, Franchise Brand Lead, Life Sciences Consulting Teams (Blue Matter)  
 **Layout Standard:** 16:9 widescreen (1920 × 1080 px), Slate Navy & Life Sciences Teal consulting palette.  
 **Data Source:** Star Schema connection to `data/processed/pharma_commercial.db` or PostgreSQL data warehouse.  
@@ -56,19 +57,19 @@ Establish 1-to-Many (`1:*`), Single-Direction relationships from Dimension table
 ### Page 4: Customer RFM & Distributor Dependency
 - **Header KPIs:**
   - **Institutional Accounts:** `120 Accounts`
-  - **Big 3 Wholesaler Concentration:** `78.0%` (McKesson, AmerisourceBergen, Cardinal)
-  - **Tier 1 Strategic Key Accounts:** `28 Accounts ($385.2M)`
-  - **Tier 3 At-Risk Accounts:** `18 Accounts ($215.4M)`
-- **Visual 1 (Treemap):** Distributor Volume Share (`McKesson Corp` 35.0%, `AmerisourceBergen` 25.0%, `Cardinal Health` 18.0%, `Alliance Healthcare` 12.0%, `Medipal` 6.0%, `Direct` 4.0%).
+  - **Top 3 Wholesaler Concentration:** `69.65%` (Direct Pharma Logistics, AmerisourceBergen, Alliance Healthcare)
+  - **Tier 1 Strategic Key Accounts:** `37 Accounts`
+  - **Tier 3 At-Risk Accounts:** `18 Accounts`
+- **Visual 1 (Treemap):** Distributor Volume Share (`Direct Pharma Logistics` 35.01%, `AmerisourceBergen` 18.30%, `Alliance Healthcare` 16.33%, `McKesson Corp` 14.30%, `Cardinal Health` 11.24%, `Medipal` 4.81%).
 - **Visual 2 (Scatter Plot - RFM Profile):** X-axis: `Recency Days`, Y-axis: `Monetary Net Spend ($)`, Bubble Size: `Order Frequency`, Colored by `Customer RFM Segment`.
 - **Visual 3 (Detail Table with Conditional Formatting):** Top 20 Institutional Accounts with AOV, Order Count, and Segment Tag.
 
 ### Page 5: Sales Force Effectiveness (SFE)
 - **Header KPIs:**
   - **Total Field Force:** `24 Representatives`
-  - **Commercial Teams:** `4 Business Units`
+  - **Commercial Teams:** `4 Business Units (6 reps each)`
   - **Average Productivity:** `$51.88M / Rep`
-  - **Highest Productivity Team:** `Team Gamma - Specialty ($59.04M / Rep)`
+  - **Top Team Productivity:** `Team Alpha ($53.67M / Rep) & Team Gamma ($53.14M / Rep)`
 - **Visual 1 (Horizontal Bar Chart):** Headcount-Normalized Revenue per Representative by Commercial Team.
 - **Visual 2 (Leaderboard Table):** Representative Ranking, Territory Country, Total Accounts Covered, Average Deal Size, Firm Contribution %.
 - **Visual 3 (Line Chart):** Quarterly Team Sales Trends (Tracking detailing momentum).

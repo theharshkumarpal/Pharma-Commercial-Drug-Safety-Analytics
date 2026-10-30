@@ -121,5 +121,5 @@ Evaluated raw team sales vs **Headcount-Normalized Revenue per Representative** 
 - **Team Beta - CNS South (6 Reps):** Total Sales: $290.92M | **Productivity: $48.49M / Rep**
 
 ### 4. Strategic Implications
-- While Team Alpha leads slightly in total net sales, Team Gamma achieves comparable productivity ($53.14M/rep) from only ~8,600 specialty orders compared to Team Alpha's ~21,000 orders.
-- **Recommendation:** Revenue per detailing call is substantially higher in specialty oncology. Transition field detailing incentives toward high-margin biologics to maximize rep efficiency.
+- While Team Alpha leads slightly in total net sales ($322.00M vs $318.82M), Team Gamma achieves comparable productivity ($53.14M/rep) from fewer, higher-value transactions (average transaction value of ~$37,000 in specialty oncology vs ~$15,000 in CNS).
+- **Recommendation:** Rather than focusing purely on transaction volume, commercial strategy should recognize the higher revenue-per-transaction realization in specialty oncology and structure sales incentives accordingly.

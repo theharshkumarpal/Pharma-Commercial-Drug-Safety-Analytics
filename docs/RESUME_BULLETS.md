@@ -16,7 +16,7 @@
 ---
 
 ## 3. Resume Bullet 3: Customer RFM Segmentation & Sales Force Effectiveness (Python & Power BI)
-> **Segmented 120 institutional health system accounts using rule-based RFM scoring and K-Means clustering (identifying 18 at-risk accounts representing 15% of client base) and benchmarked 24 sales representatives via headcount-normalized productivity ($53.1M/rep in specialty oncology vs $48.5M/rep in southern CNS); designed a 6-page Power BI executive suite with DAX time intelligence and out-of-sample forecasting (11.55% MAPE).**
+> **Segmented 120 institutional health system accounts using rule-based RFM scoring and K-Means clustering (identifying 18 at-risk accounts representing 15% of client base) and benchmarked 24 sales representatives via headcount-normalized productivity ($53.1M/rep in specialty oncology vs $48.5M/rep in southern CNS); designed a 6-page Power BI executive suite specification with 17 DAX time-intelligence measures and out-of-sample forecasting (11.55% 6-month test-set MAPE).**
 
 ---
 

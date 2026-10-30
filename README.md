@@ -13,6 +13,8 @@ Designed to demonstrate candidate readiness for **Commercial Analytics Associate
 
 ## 1. Executive Summary & Commercial KPIs
 
+> **Data Disclosure:** The commercial sales dataset is **synthetic transaction-level data** generated via Python (`src/generate_commercial_data.py`, fixed seed `42`) to model multi-market launches, contract discounting, and reverse logistics without exposing proprietary manufacturer audit data.
+
 The platform models **28,500 commercial transactions** across **6 global markets** over a 36-month horizon (2023–2025), capturing **$1.245 Billion in net recognized sales** across 9 pharmaceutical therapies spanning Central Nervous System (CNS), Oncology, and Immunology.
 
 | Metric | Empirical Value | Business Context & Definition |
@@ -22,7 +24,7 @@ The platform models **28,500 commercial transactions** across **6 global markets
 | **Contract Discounts & Rebates** | **$232,655,989.02** | Institutional contracting, PBM rebates, and statutory discounts (15.71% discount burden). |
 | **Net Recognized Revenue** | **$1,245,009,425.53** | Realized recognized commercial cash flow (`Gross - Returns - Discounts`). |
 | **Gross-to-Net (GTN) Realization** | **84.10%** | Overall commercial portfolio net revenue capture rate. |
-| **Cost of Goods Sold (COGS)** | **$220,694,220.00** | Active pharmaceutical ingredient (API), sterile formulation, and packaging costs. |
+| **Cost of Goods Sold (COGS)** | **$219,723,424.00** | Direct API formulation, sterile manufacturing, and packaging costs. |
 | **Gross Margin** | **$1,025,286,001.53 (82.35%)** | Product margin supporting commercial detailing and R&D reinvestment. |
 | **Net Volume Sold** | **4,898,450 Units** | Commercial units distributed across 120 key institutional healthcare accounts. |
 
@@ -67,29 +69,29 @@ The relational database is architected as a Kimball-style star schema (`fact_sal
 ## 3. Advanced Commercial Analytics Modules
 
 ### A. Product Portfolio ABC / Pareto Analysis
-- **Class A Core Drivers (64.3% of revenue):** *AmphetaDex* ($293.0M), *OlanzRx* ($193.6M), *DexMethyl* ($161.4M), and *QuetiapMax* ($152.8M).
-- **Class B Specialty Assets (26.3% of revenue):** *ImmunoPax* ($120.0M), *OncoShield* ($114.3M), and *EscitaloPro* ($93.9M).
-- **Volume vs. Value Finding:** Oncology therapies generate **$234.3M from only 52,068 units** ($4,499/unit), whereas mature CNS therapies move 597,000+ units to yield $79.7M, indicating detailing should prioritize oncology market access.
+- **Class A Core Drivers (64.32% of revenue):** *AmphetaDex* ($293.0M), *OlanzRx* ($193.6M), *DexMethyl* ($161.4M), and *QuetiapMax* ($152.8M).
+- **Class B Specialty Assets (26.35% of revenue):** *ImmunoPax* ($120.0M), *OncoShield* ($114.3M), and *EscitaloPro* ($93.9M).
+- **Volume vs. Value Finding:** Oncology therapies generate **$234.3M from only 52,068 units** ($4,499/unit), whereas mature CNS therapies move 597,000+ units to yield $79.7M.
 
 ### B. Geographic Performance & Common-Period Normalization
 - **The Analytical Challenge:** Countries launched at different times (US/DE/UK: 36 months; FR: 30 months; JP: 24 months; CA: 18 months).
-- **The Normalized Common-Period (FY2025):** When all markets operated for a full 12 months, **Japan ($61.8M) and France ($54.2M) generated higher annualized sales than the mature UK market ($53.1M)**, highlighting expansion market velocity.
+- **The Normalized Common-Period (FY2025):** When all markets operated for a full 12 months, **Japan ($63.12M) and France ($53.91M) generated higher annualized sales than the mature UK market ($51.20M)**, highlighting expansion market velocity.
 
 ### C. Institutional Customer RFM Segmentation
-- **Tier 1 Strategic Key Accounts (Champions, 28 accounts):** $385.2M revenue (30.9% share), Average Order Value: $52,100.
-- **Tier 3 At-Risk High-Value Accounts (18 accounts):** $215.4M revenue (17.3% share). High historical spend with purchase recency gaps > 45 days, requiring targeted field retention campaigns.
+- **Tier 1 Strategic Key Accounts (Champions, 37 accounts):** High frequency, high spend. Dedicated Key Account Managers assigned.
+- **Tier 3 At-Risk High-Value Accounts (18 accounts):** High historical spend with purchase recency gaps > 45 days, requiring targeted field retention campaigns.
 
 ### D. Sales Force Effectiveness (SFE)
-- **Headcount Normalization:** Normalized team performance by representative count.
-- **Finding:** While Team Alpha (CNS North, 7 reps) produced $331.6M raw sales ($47.37M/rep), **Team Gamma (Specialty Oncology, 6 reps) generated $354.2M, achieving $59.04M/rep** (24.6% higher productivity per field rep).
+- **Headcount Normalization:** Normalized team performance by representative count across 4 teams of 6 reps each.
+- **Finding:** Team Alpha (CNS North) generated $322.00M (**$53.67M/rep**) and Team Gamma (Specialty Oncology) generated $318.82M (**$53.14M/rep**), with specialty oncology achieving comparable productivity from substantially higher average transaction values.
 
 ### E. Defensible Time-Series Revenue Forecasting
 - **Strict Out-of-Sample Split:** Train on first 30 months (Jan 2023–Jun 2025), Test on final 6 months (Jul 2025–Dec 2025). Zero data leakage.
-- **Model Benchmark:**
+- **Model Benchmark (6-Month Test Set):**
   - *Baseline Naive Persistence:* MAPE 11.85% | RMSE $7.11M
   - *Baseline 6-Month Moving Average:* MAPE 11.92% | RMSE $7.45M
   - *SARIMAX(1,1,1):* MAPE 11.86% | RMSE $6.85M
-  - **Champion: Holt-Winters Exponential Smoothing:** **MAPE 11.55% | RMSE $6.16M**
+  - **Champion: Holt-Winters Exponential Smoothing (Damped Additive Trend):** **MAPE 11.55% | RMSE $6.16M** (six-month test set result).
 
 ---
 
@@ -178,9 +180,9 @@ python3 src/visualizations.py
 
 ### 3. Run Automated Tests
 ```bash
-python3 -m unittest tests/test_analytics.py
+python3 -m unittest discover tests
 ```
-*Result: 6 tests run, 100% passed (zero duplicates, 0 orphaned keys, full financial reconciliation).*
+*Result: 15 tests run, 100% passed (zero duplicates, 0 orphaned keys, full financial reconciliation, ETL normalization).*
 
 ---
 
@@ -190,3 +192,11 @@ For interviewers and recruiters:
 - **Project Walkthrough & Technical Questions:** Review [docs/INTERVIEW_PREPARATION.md](file:///Users/vandy/Pharmaceutical-Analysis/docs/INTERVIEW_PREPARATION.md) for 25 in-depth technical and consulting questions.
 - **Consulting Insights & Recommendations:** Review [docs/BUSINESS_INSIGHTS.md](file:///Users/vandy/Pharmaceutical-Analysis/docs/BUSINESS_INSIGHTS.md) for data-driven strategic actions.
 - **Resume Bullets:** Review [docs/RESUME_BULLETS.md](file:///Users/vandy/Pharmaceutical-Analysis/docs/RESUME_BULLETS.md) for ATS-ready, quantified bullets.
+
+---
+
+## 7. Pharmacovigilance Data Engineering Notes & FAERS Limitations
+
+The repository includes a secondary clinical safety pipeline (`etl/` and `app/`) ingesting adverse event reports from the openFDA / FDA Adverse Event Reporting System (FAERS):
+- **API Extraction Limit:** The extract script (`etl/extract.py`) paginates up to **10 pages of 100 reports (1,000 reports per drug maximum)** to respect openFDA rate limits and ensure fast local reproducibility.
+- **FAERS Spontaneous Reporting Limitations:** FAERS is a post-marketing surveillance database populated by voluntary spontaneous reports from healthcare professionals and consumers. It has inherent reporting biases, duplicate entries, under-reporting, and lacks a denominator of total drug exposure. As such, FAERS data **cannot establish true adverse event incidence rates or epidemiological causation**, and is utilized here strictly to illustrate safety signal monitoring.
