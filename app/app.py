@@ -1,0 +1,409 @@
+"""
+app/app.py
+----------
+Flask + Plotly dashboard for pharmacovigilance analytics.
+Production-ready for Render + Neon deployment.
+Routes:
+  /                  -> overview (all drugs, KPI cards)
+  /drug/<name>       -> drug-specific deep dive
+  /api/data/<name>   -> JSON endpoint for chart data
+  /health            -> database health check
+"""
+import os
+import json
+import psycopg2
+import psycopg2.extras
+import plotly.graph_objects as go
+from plotly.utils import PlotlyJSONEncoder
+from flask import Flask, render_template, jsonify, request
+from dotenv import load_dotenv
+from urllib.parse import urlparse
+
+load_dotenv()
+
+app = Flask(
+    __name__,
+    template_folder=os.path.join(os.path.dirname(__file__), "templates"),
+)
+app.config["TEMPLATES_AUTO_RELOAD"] = True
+
+DRUGS = ["adderall", "ritalin", "xanax", "lexapro", "olanzapine", "seroquel"]
+
+DRUG_LABELS = {
+    "adderall":   "Adderall (amphetamine)",
+    "ritalin":    "Ritalin (methylphenidate)",
+    "xanax":      "Xanax (alprazolam)",
+    "lexapro":    "Lexapro (escitalopram)",
+    "olanzapine": "Olanzapine",
+    "seroquel":   "Seroquel (quetiapine)",
+}
+
+CHART_COLORS = {
+    "primary":   "#ff6eb0",
+    "secondary": "#ffb3d1",
+    "warning":   "#ffb347",
+    "danger":    "#ff4f4f",
+    "bg":        "rgba(0,0,0,0)",
+    "font":      "#f5e6ed",
+    "grid":      "rgba(255,180,210,0.08)",
+}
+
+# ------------------------------------------------------------------
+# DB connection
+# ------------------------------------------------------------------
+def get_db():
+    database_url = os.getenv("DATABASE_URL")
+    if database_url:
+        if database_url.startswith("postgres://"):
+            database_url = database_url.replace("postgres://", "postgresql://", 1)
+        r = urlparse(database_url)
+        return psycopg2.connect(
+            host=r.hostname, port=r.port or 5432,
+            dbname=r.path[1:], user=r.username, password=r.password,
+            sslmode="require",
+        )
+    return psycopg2.connect(
+        host=os.getenv("DB_HOST", "localhost"),
+        port=int(os.getenv("DB_PORT", 5432)),
+        dbname=os.getenv("DB_NAME", "pharmacovigilance"),
+        user=os.getenv("DB_USER"),
+        password=os.getenv("DB_PASSWORD"),
+        sslmode="require",
+    )
+
+def query(sql, params=None):
+    conn = get_db()
+    try:
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            cur.execute(sql, params)
+            return [dict(r) for r in cur.fetchall()]
+    finally:
+        conn.close()
+
+# ------------------------------------------------------------------
+# Data queries
+# ------------------------------------------------------------------
+def get_kpis(drug_name=None):
+    base_filter = ""
+    params = []
+    if drug_name:
+        base_filter = "WHERE LOWER(d.generic_name) LIKE %s OR LOWER(d.medicinal_product) LIKE %s"
+        params = [f"%{drug_name}%", f"%{drug_name}%"]
+    sql = f"""
+        SELECT
+            COUNT(DISTINCT r.id)                                        AS total_reports,
+            COUNT(DISTINCT r.id) FILTER (WHERE r.serious = TRUE)       AS serious_reports,
+            COUNT(DISTINCT r.id) FILTER (WHERE r.serious_death = TRUE) AS death_reports,
+            ROUND(
+                100.0 * COUNT(DISTINCT r.id) FILTER (WHERE r.serious = TRUE)
+                / NULLIF(COUNT(DISTINCT r.id), 0), 1
+            ) AS pct_serious
+        FROM reports r
+        JOIN drugs d ON d.report_id = r.id
+        {base_filter}
+    """
+    rows = query(sql, params or None)
+    return rows[0] if rows else {}
+
+def get_report_counts_by_drug():
+    return query("""
+        SELECT d.generic_name,
+               COUNT(DISTINCT r.id) AS report_count,
+               COUNT(DISTINCT r.id) FILTER (WHERE r.serious = TRUE) AS serious_count
+        FROM drugs d
+        JOIN reports r ON r.id = d.report_id
+        WHERE d.drug_role = '1'
+        GROUP BY d.generic_name
+        ORDER BY report_count DESC
+    """)
+
+def get_top_reactions(drug_name, limit=15):
+    return query("""
+        SELECT rx.reaction_term, COUNT(*) AS n
+        FROM reactions rx
+        JOIN reports r ON r.id = rx.report_id
+        JOIN drugs d   ON d.report_id = r.id
+        WHERE d.drug_role = '1'
+          AND (LOWER(d.generic_name) LIKE %s OR LOWER(d.medicinal_product) LIKE %s)
+          AND rx.reaction_term IS NOT NULL
+        GROUP BY rx.reaction_term
+        ORDER BY n DESC
+        LIMIT %s
+    """, (f"%{drug_name}%", f"%{drug_name}%", limit))
+
+def get_reports_over_time(drug_name):
+    return query("""
+        SELECT DATE_TRUNC('quarter', r.receipt_date) AS quarter, COUNT(*) AS n
+        FROM reports r
+        JOIN drugs d ON d.report_id = r.id
+        WHERE d.drug_role = '1'
+          AND r.receipt_date IS NOT NULL
+          AND (LOWER(d.generic_name) LIKE %s OR LOWER(d.medicinal_product) LIKE %s)
+        GROUP BY quarter
+        ORDER BY quarter
+    """, (f"%{drug_name}%", f"%{drug_name}%"))
+
+def get_comeds(drug_name, limit=12):
+    return query("""
+        SELECT d2.generic_name AS co_drug, COUNT(DISTINCT r.id) AS co_occurrences
+        FROM reports r
+        JOIN drugs d1 ON d1.report_id = r.id
+        JOIN drugs d2 ON d2.report_id = r.id
+        WHERE d1.drug_role = '1' AND d2.drug_role = '2'
+          AND (LOWER(d1.generic_name) LIKE %s OR LOWER(d1.medicinal_product) LIKE %s)
+          AND d2.generic_name IS NOT NULL
+        GROUP BY d2.generic_name
+        ORDER BY co_occurrences DESC
+        LIMIT %s
+    """, (f"%{drug_name}%", f"%{drug_name}%", limit))
+
+def get_sex_distribution(drug_name):
+    return query("""
+        SELECT COALESCE(p.sex, 'unknown') AS sex, COUNT(*) AS n
+        FROM patients p
+        JOIN reports r ON r.id = p.report_id
+        JOIN drugs d   ON d.report_id = r.id
+        WHERE d.drug_role = '1'
+          AND (LOWER(d.generic_name) LIKE %s OR LOWER(d.medicinal_product) LIKE %s)
+        GROUP BY p.sex
+    """, (f"%{drug_name}%", f"%{drug_name}%"))
+
+def get_reaction_heatmap():
+    return query("""
+        WITH top_reactions AS (
+            SELECT reaction_term, COUNT(*) AS n
+            FROM reactions
+            WHERE reaction_term IS NOT NULL
+            GROUP BY reaction_term
+            ORDER BY n DESC
+            LIMIT 10
+        )
+        SELECT d.generic_name, rx.reaction_term, COUNT(*) AS n
+        FROM reactions rx
+        JOIN reports r ON r.id = rx.report_id
+        JOIN drugs d   ON d.report_id = r.id
+        JOIN top_reactions tr ON tr.reaction_term = rx.reaction_term
+        WHERE d.drug_role = '1'
+        GROUP BY d.generic_name, rx.reaction_term
+    """)
+
+# ------------------------------------------------------------------
+# Overview data helpers
+# ------------------------------------------------------------------
+def get_drug_summary():
+    summary = []
+    for slug in DRUGS:
+        kpis = get_kpis(slug)
+        top_rxn = get_top_reactions(slug, limit=1)
+        top_reaction = top_rxn[0]["reaction_term"].title() if top_rxn else "—"
+        label = DRUG_LABELS.get(slug, slug)
+        name = label.split("(")[0].strip()
+        drug_class = label.split("(")[1].replace(")", "").strip() if "(" in label else ""
+        summary.append({
+            "slug":          slug,
+            "name":          name,
+            "drug_class":    drug_class,
+            "total_reports": int(kpis.get("total_reports") or 0),
+            "pct_serious":   float(kpis.get("pct_serious") or 0),
+            "deaths":        int(kpis.get("death_reports") or 0),
+            "top_reaction":  top_reaction,
+        })
+    return summary
+
+def get_top_drugs(drug_summary, n=5):
+    sorted_drugs = sorted(drug_summary, key=lambda x: x["total_reports"], reverse=True)[:n]
+    max_count = sorted_drugs[0]["total_reports"] if sorted_drugs else 1
+    return [{
+        "drug":  d["name"],
+        "count": d["total_reports"],
+        "pct":   round(d["total_reports"] / max_count * 100, 1),
+    } for d in sorted_drugs]
+
+def get_top_reactions_all(limit=10):
+    rows = query("""
+        SELECT rx.reaction_term, COUNT(*) AS n
+        FROM reactions rx
+        JOIN reports r ON r.id = rx.report_id
+        JOIN drugs d   ON d.report_id = r.id
+        WHERE d.drug_role = '1'
+          AND rx.reaction_term IS NOT NULL
+        GROUP BY rx.reaction_term
+        ORDER BY n DESC
+        LIMIT %s
+    """, (limit,))
+    total_row = query("SELECT COUNT(DISTINCT id) AS n FROM reports")
+    total = total_row[0]["n"] if total_row else 1
+    return [{
+        "reaction": r["reaction_term"].title(),
+        "count":    int(r["n"]),
+        "pct":      round(r["n"] / total * 100, 2),
+    } for r in rows]
+
+def get_recent_reports(limit=8):
+    rows = query("""
+        SELECT
+            d.medicinal_product  AS drug,
+            rx.reaction_term     AS reaction,
+            r.receipt_date       AS date,
+            r.serious            AS serious,
+            r.serious_death      AS fatal
+        FROM reports r
+        JOIN drugs d      ON d.report_id = r.id AND d.drug_role = '1'
+        JOIN reactions rx ON rx.report_id = r.id
+        WHERE r.receipt_date IS NOT NULL
+          AND rx.reaction_term IS NOT NULL
+          AND d.medicinal_product IS NOT NULL
+        ORDER BY r.receipt_date DESC
+        LIMIT %s
+    """, (limit,))
+    return [{
+        "drug":     r["drug"].title() if r["drug"] else "—",
+        "reaction": r["reaction"].title() if r["reaction"] else "—",
+        "date":     str(r["date"])[:10] if r["date"] else "—",
+        "serious":  bool(r["serious"]),
+        "fatal":    bool(r["fatal"]),
+        "outcome":  None,
+    } for r in rows]
+# ------------------------------------------------------------------
+# Chart builders
+# ------------------------------------------------------------------
+def _dark_layout(title="", height=380, margin=None):
+    return dict(
+        title=dict(text=title, font=dict(color=CHART_COLORS["font"], size=13)),
+        paper_bgcolor=CHART_COLORS["bg"],
+        plot_bgcolor=CHART_COLORS["bg"],
+        font=dict(color=CHART_COLORS["font"], family="DM Mono, monospace", size=11),
+        height=height,
+        margin=margin or dict(l=60, r=20, t=50, b=40),
+        xaxis=dict(gridcolor=CHART_COLORS["grid"], linecolor=CHART_COLORS["grid"],
+                   zerolinecolor=CHART_COLORS["grid"]),
+        yaxis=dict(gridcolor=CHART_COLORS["grid"], linecolor=CHART_COLORS["grid"],
+                   zerolinecolor=CHART_COLORS["grid"]),
+    )
+
+def chart_bar_reactions(drug_name):
+    rows = get_top_reactions(drug_name)
+    if not rows:
+        return "{}"
+    fig = go.Figure(go.Bar(
+        x=[r["n"] for r in rows],
+        y=[r["reaction_term"] for r in rows],
+        orientation="h",
+        marker_color=CHART_COLORS["primary"],
+    ))
+    fig.update_layout(**_dark_layout(
+        title=f"Top adverse reactions — {DRUG_LABELS.get(drug_name, drug_name)}",
+        height=420, margin=dict(l=220, r=20, t=50, b=40),
+    ))
+    fig.update_layout(yaxis=dict(autorange="reversed"))
+    return json.dumps(fig, cls=PlotlyJSONEncoder)
+
+def chart_time_series(drug_name):
+    rows = get_reports_over_time(drug_name)
+    if not rows:
+        return "{}"
+    fig = go.Figure(go.Scatter(
+        x=[str(r["quarter"])[:10] for r in rows],
+        y=[r["n"] for r in rows],
+        mode="lines+markers",
+        line=dict(color=CHART_COLORS["primary"], width=2),
+        marker=dict(size=5),
+    ))
+    fig.update_layout(**_dark_layout(
+        title=f"Reports over time — {DRUG_LABELS.get(drug_name, drug_name)}",
+        height=300, margin=dict(l=60, r=20, t=50, b=40),
+    ))
+    return json.dumps(fig, cls=PlotlyJSONEncoder)
+
+def chart_comeds(drug_name):
+    rows = get_comeds(drug_name)
+    if not rows:
+        return "{}"
+    fig = go.Figure(go.Bar(
+        x=[r["co_occurrences"] for r in rows],
+        y=[r["co_drug"] for r in rows],
+        orientation="h",
+        marker_color=CHART_COLORS["secondary"],
+    ))
+    fig.update_layout(**_dark_layout(
+        title=f"Most common co-medications — {DRUG_LABELS.get(drug_name, drug_name)}",
+        height=380, margin=dict(l=180, r=20, t=50, b=40),
+    ))
+    fig.update_layout(yaxis=dict(autorange="reversed"))
+    return json.dumps(fig, cls=PlotlyJSONEncoder)
+
+def chart_sex_pie(drug_name):
+    rows = get_sex_distribution(drug_name)
+    if not rows:
+        return "{}"
+    fig = go.Figure(go.Pie(
+        labels=[r["sex"] for r in rows],
+        values=[r["n"] for r in rows],
+        hole=0.4,
+        marker_colors=[CHART_COLORS["primary"], CHART_COLORS["warning"], CHART_COLORS["grid"]],
+    ))
+    fig.update_layout(**_dark_layout(
+        title="Sex distribution", height=300,
+        margin=dict(l=20, r=20, t=50, b=20),
+    ))
+    return json.dumps(fig, cls=PlotlyJSONEncoder)
+
+# ------------------------------------------------------------------
+# Routes
+# ------------------------------------------------------------------
+@app.route("/")
+def overview():
+    drug_summary   = get_drug_summary()
+    top_drugs      = get_top_drugs(drug_summary)
+    top_reactions  = get_top_reactions_all()
+    recent_reports = get_recent_reports()
+    return render_template(
+        "index.html",
+        kpis=get_kpis(),
+        drugs=DRUGS,
+        drug_labels=DRUG_LABELS,
+        drug_summary=drug_summary,
+        top_drugs=top_drugs,
+        top_reactions=top_reactions,
+        recent_reports=recent_reports,
+    )
+
+@app.route("/drug/<drug_name>")
+def drug_view(drug_name):
+    if drug_name not in DRUGS:
+        return "Drug not found", 404
+    return render_template(
+        "drug.html",
+        drug=drug_name,
+        label=DRUG_LABELS.get(drug_name, drug_name),
+        drugs=DRUGS,
+        drug_labels=DRUG_LABELS,
+        kpis=get_kpis(drug_name),
+        bar_chart=chart_bar_reactions(drug_name),
+        time_chart=chart_time_series(drug_name),
+        comed_chart=chart_comeds(drug_name),
+        sex_chart=chart_sex_pie(drug_name),
+    )
+
+@app.route("/api/data/<drug_name>")
+def api_data(drug_name):
+    if drug_name not in DRUGS:
+        return jsonify({"error": "drug not found"}), 404
+    return jsonify({
+        "kpis":      get_kpis(drug_name),
+        "reactions": get_top_reactions(drug_name),
+        "comeds":    get_comeds(drug_name),
+        "timeline":  get_reports_over_time(drug_name),
+    })
+
+@app.route("/health")
+def health():
+    try:
+        conn = get_db()
+        conn.close()
+        return jsonify({"status": "ok", "db": "connected"})
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+if __name__ == "__main__":
+    app.run(debug=True, port=5000)
