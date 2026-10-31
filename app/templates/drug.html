@@ -41,6 +41,16 @@
   </div>
 </div>
 
+<!-- Age distribution + Drug role breakdown -->
+<div class="chart-grid-2">
+  <div class="chart-card">
+    <div id="age-chart"></div>
+  </div>
+  <div class="chart-card">
+    <div id="role-chart"></div>
+  </div>
+</div>
+
 <!-- Time series -->
 <div class="chart-card">
   <div id="time-chart"></div>
@@ -56,6 +66,8 @@
 <script>
   renderChart('bar-chart',   {{ bar_chart   | tojson }});
   renderChart('sex-chart',   {{ sex_chart   | tojson }});
+  renderChart('age-chart',   {{ age_chart   | tojson }});
+  renderChart('role-chart',  {{ role_chart  | tojson }});
   renderChart('time-chart',  {{ time_chart  | tojson }});
   renderChart('comed-chart', {{ comed_chart | tojson }});
 </script>

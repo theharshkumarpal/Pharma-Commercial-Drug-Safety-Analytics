@@ -42,6 +42,6 @@
 ### 3.1 Power BI Desktop Headless Environment
 - **Limitation:** Power BI Desktop (`.pbix` authoring tool) requires a Windows desktop environment with a graphical user interface and is not natively executable in this headless macOS / Linux terminal environment.
 - **Mitigation:** We implemented:
-  1. A complete, production-ready DAX measures library in [dashboards/powerbi/dax_measures.txt](file:///Users/vandy/Pharmaceutical-Analysis/dashboards/powerbi/dax_measures.txt).
-  2. A comprehensive 6-page visual specification, wireframe layout, and slicer configuration guide in [docs/DASHBOARD_GUIDE.md](file:///Users/vandy/Pharmaceutical-Analysis/docs/DASHBOARD_GUIDE.md).
-  3. Matplotlib/Seaborn visualization scripts in [src/visualizations.py](file:///Users/vandy/Pharmaceutical-Analysis/src/visualizations.py) generating presentation-grade static visual equivalents in `outputs/figures/`.
+  1. A complete, production-ready DAX measures library in [dashboards/powerbi/dax_measures.txt](dashboards/powerbi/dax_measures.txt).
+  2. A comprehensive 6-page visual specification, wireframe layout, and slicer configuration guide in [docs/DASHBOARD_GUIDE.md](docs/DASHBOARD_GUIDE.md).
+  3. Matplotlib/Seaborn visualization scripts in [src/visualizations.py](src/visualizations.py) generating presentation-grade static visual equivalents in `outputs/figures/`.
