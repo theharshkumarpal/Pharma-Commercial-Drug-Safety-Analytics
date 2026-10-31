@@ -67,7 +67,23 @@ def _parse_date(raw):
     return None
 
 
+BRAND_GENERIC_MAP = {
+    "adderall": "amphetamine",
+    "ritalin": "methylphenidate",
+    "concerta": "methylphenidate",
+    "xanax": "alprazolam",
+    "niravam": "alprazolam",
+    "lexapro": "escitalopram",
+    "celexa": "citalopram",
+    "zyprexa": "olanzapine",
+    "seroquel": "quetiapine",
+    "klonopin": "clonazepam",
+}
+
+
 def _safe_float(val):
+    if val is None:
+        return None
     try:
         f = float(val)
         return f if f >= 0 else None
@@ -77,52 +93,103 @@ def _safe_float(val):
 
 def _normalize_age_years(val, unit_code):
     """
-    Normalizes patient age to years based on openFDA age unit codes:
+    Normalizes patient age to years based on openFDA/ICH E2B age unit codes:
       800: Decade
       801: Year
       802: Month
       803: Week
       804: Day
       805: Hour
+
+    Clinical Plausibility & Safety Checks:
+      - Returns None if val is missing, malformed, negative, or invalid.
+      - Returns None if unit_code is missing, empty, or unrecognized (never silently assumes years).
+      - Returns None if normalized age exceeds 125.0 years (implausible outlier).
     """
     f = _safe_float(val)
-    if f is None:
+    if f is None or f < 0:
         return None
-    unit = str(unit_code).strip() if unit_code else "801"
-    if unit == "800":
-        return round(f * 10.0, 1)
-    elif unit == "801" or not unit_code:
-        return round(f, 1)
-    elif unit == "802":
-        return round(f / 12.0, 1)
-    elif unit == "803":
-        return round(f / 52.143, 1)
-    elif unit == "804":
-        return round(f / 365.25, 1)
-    elif unit == "805":
-        return round(f / 8766.0, 2)
-    return round(f, 1)
+
+    if unit_code is None or str(unit_code).strip() == "":
+        log.warning(f"Missing age unit code for patient age value: {val}. Returning None to prevent silent unit misinterpretation.")
+        return None
+
+    unit = str(unit_code).strip()
+
+    if unit == "800":       # Decade
+        age_years = round(f * 10.0, 1)
+    elif unit == "801":     # Year
+        age_years = round(f, 1)
+    elif unit == "802":     # Month
+        age_years = round(f / 12.0, 1)
+    elif unit == "803":     # Week
+        age_years = round(f / 52.1429, 1)
+    elif unit == "804":     # Day
+        age_years = round(f / 365.25, 1)
+    elif unit == "805":     # Hour
+        age_years = round(f / 8766.0, 2)
+    else:
+        # Unrecognized unit code - do not silently misinterpret units
+        log.warning(f"Unrecognized age unit code: {unit_code} for age {val}. Returning None.")
+        return None
+
+    # Biological plausibility validation (0 to 125 years)
+    if age_years > 125.0:
+        log.warning(f"Implausible normalized age: {age_years} years (from val={val}, unit={unit_code})")
+        return None
+
+    return age_years
 
 
 def _normalize_weight_kg(val, unit_code=None):
     """
     Normalizes patient weight to kilograms.
-    In openFDA FAERS, patientweight is typically reported in kg.
-    If pounds are reported (unit code 002 or lbs), converts to kg.
+
+    Source Verification & openFDA FAERS Convention:
+      - In the openFDA /drug/event schema, patient weight is reported in 'patientweight'.
+      - Per openFDA documentation and ICH E2B(R3) field B.1.7.2, FAERS patient weight is
+        conventionally recorded directly in kilograms (kg), and openFDA does not provide a
+        separate 'patientweightunit' field in its standard JSON hierarchy.
+      - If an explicit unit is supplied or passed from downstream/alternative feeds:
+          'kg', 'kgs', '001': treated as kilograms.
+          'lbs', 'lb', '002': converted to kilograms via multiplying by 0.453592.
+      - If unit_code is None or omitted, defaults to kg per openFDA FAERS convention.
+      - Rejects missing, malformed, non-positive (<=0), and implausible values (<0.5 kg or >500 kg).
     """
     f = _safe_float(val)
-    if f is None:
+    if f is None or f <= 0:
         return None
-    unit = str(unit_code).strip().lower() if unit_code else "kg"
+
+    unit = str(unit_code).strip().lower() if unit_code is not None and str(unit_code).strip() != "" else "kg"
+
     if unit in ("lbs", "lb", "002"):
-        return round(f * 0.453592, 2)
-    return round(f, 2)
+        weight_kg = round(f * 0.453592, 2)
+    elif unit in ("kg", "kgs", "001"):
+        weight_kg = round(f, 2)
+    else:
+        log.warning(f"Unrecognized weight unit: {unit_code}. Rejecting value {val}.")
+        return None
+
+    # Biological plausibility validation (0.5 kg to 500.0 kg)
+    if weight_kg < 0.5 or weight_kg > 500.0:
+        log.warning(f"Implausible normalized weight: {weight_kg} kg (from val={val}, unit={unit_code})")
+        return None
+
+    return weight_kg
 
 
 def _normalize_drug_name(name):
+    """
+    Normalizes whitespace and casing, and checks against verified brand-to-generic dictionary.
+    """
     if not name:
         return None
-    return re.sub(r'\s+', ' ', name.strip().lower())
+    cleaned = re.sub(r'\s+', ' ', str(name).strip().lower())
+    # Strip common salt suffixes for clean generic comparison if needed
+    for brand, generic in BRAND_GENERIC_MAP.items():
+        if cleaned == brand:
+            return generic
+    return cleaned
 
 
 def _flag(val):
@@ -136,12 +203,35 @@ def transform_report(raw, drug_brand):
     if not safety_id:
         return None
 
+    pt = raw.get("patient", {})
+    raw_reactions = pt.get("reaction", [])
+    if isinstance(raw_reactions, dict):
+        raw_reactions = [raw_reactions]
+
+    reactions = []
+    has_fatal_reaction = False
+    for r in raw_reactions:
+        out_code = str(r.get("reactionoutcome", "")).strip()
+        outcome_label = REACTION_OUTCOME_MAP.get(out_code, None)
+        if out_code == "4" or outcome_label == "fatal":
+            has_fatal_reaction = True
+        reactions.append({
+            "reaction_term": r.get("reactionmeddrapt"),
+            "outcome":       outcome_label,
+        })
+
+    is_serious_death = _flag(raw.get("seriousnessdeath"))
+    # Report-level clinical outcome: 'fatal' if serious death flag or fatal reaction reported.
+    # Note: FAERS death flags indicate that patient death was reported as an event outcome,
+    # NOT proof that the drug caused death. Causality cannot be inferred from spontaneous reports.
+    report_outcome = "fatal" if (is_serious_death or has_fatal_reaction) else None
+
     report = {
         "safety_report_id":        str(safety_id),
         "receipt_date":            _parse_date(raw.get("receiptdate")),
         "receive_date":            _parse_date(raw.get("receivedate")),
         "serious":                 _flag(raw.get("serious")),
-        "serious_death":           _flag(raw.get("seriousnessdeath")),
+        "serious_death":           is_serious_death,
         "serious_hospitalization": _flag(raw.get("seriousnesshospitalization")),
         "serious_lifethreat":      _flag(raw.get("seriousnesslifethreatening")),
         "serious_disability":      _flag(raw.get("seriousnessdisabling")),
@@ -150,11 +240,9 @@ def transform_report(raw, drug_brand):
         "reporter_country":        raw.get("occurcountry"),
         "reporter_qualification":  REPORTER_MAP.get(
             str(raw.get("primarysource", {}).get("qualification", "")), None),
-        # Do not store death date as clinical outcome; capture general reaction outcome or fatal status
-        "outcome": "fatal" if _flag(raw.get("seriousnessdeath")) else None,
+        "outcome":                 report_outcome,
     }
 
-    pt = raw.get("patient", {})
     patient = {
         "age_years": _normalize_age_years(pt.get("patientonsetage"), pt.get("patientonsetageunit")),
         "sex":       SEX_MAP.get(str(pt.get("patientsex", "")), None),
@@ -168,26 +256,20 @@ def transform_report(raw, drug_brand):
     drugs = []
     for d in raw_drugs:
         role_code = str(d.get("drugcharacterization", ""))
+        medicinal_prod = d.get("medicinalproduct")
+        openfda_generic = d.get("openfda", {}).get("generic_name", [None])[0]
+
+        # Determine normalized generic name
+        raw_target = openfda_generic or medicinal_prod
+        norm_generic = _normalize_drug_name(raw_target)
+
         drugs.append({
-            "medicinal_product": d.get("medicinalproduct"),
-            "generic_name":      _normalize_drug_name(
-                d.get("openfda", {}).get("generic_name", [None])[0]
-                or d.get("medicinalproduct")),
+            "medicinal_product": medicinal_prod,
+            "generic_name":      norm_generic,
             "manufacturer_name": d.get("openfda", {}).get("manufacturer_name", [None])[0],
             "drug_role":         role_code,
             "drug_role_label":   DRUG_ROLE_MAP.get(role_code, "unknown"),
             "indication":        d.get("drugindication"),
-        })
-
-    raw_reactions = pt.get("reaction", [])
-    if isinstance(raw_reactions, dict):
-        raw_reactions = [raw_reactions]
-
-    reactions = []
-    for r in raw_reactions:
-        reactions.append({
-            "reaction_term": r.get("reactionmeddrapt"),
-            "outcome":       REACTION_OUTCOME_MAP.get(str(r.get("reactionoutcome", "")), None),
         })
 
     return {"report": report, "patient": patient, "drugs": drugs, "reactions": reactions}

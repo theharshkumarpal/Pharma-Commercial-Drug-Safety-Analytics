@@ -163,9 +163,9 @@ source venv/bin/activate
 pip install -r requirements.txt
 ```
 
-### 2. Run the End-to-End Pipeline
+### 2. Run Module 1 — Commercial Analytics Pipeline
 ```bash
-# Generate raw commercial sales dataset with real-world edge cases
+# Generate simulated commercial sales dataset (fixed seed 42)
 python3 src/generate_commercial_data.py
 
 # Clean, validate, and build the Star Schema database
@@ -178,25 +178,49 @@ python3 src/revenue_forecasting.py
 python3 src/visualizations.py
 ```
 
-### 3. Run Automated Tests
+### 3. Run Module 2 — Pharmacovigilance ETL & Safety Dashboard
+```bash
+# Extract adverse event reports from openFDA API (paginated, exponential backoff)
+python3 etl/extract.py
+
+# Run transform and load into PostgreSQL schema (requires PostgreSQL DATABASE_URL in .env)
+python3 run_etl.py
+
+# Run targeted top-up for low-count therapies
+python3 topup_etl.py
+
+# Launch the interactive Flask safety surveillance dashboard
+python3 -m app.app
+```
+
+### 4. Run Automated Tests
 ```bash
 python3 -m unittest discover tests
 ```
-*Result: 15 tests run, 100% passed (zero duplicates, 0 orphaned keys, full financial reconciliation, ETL normalization).*
+*Result: 40 tests executed across 3 suites, 100% passed (zero duplicates, zero orphaned foreign keys, full financial reconciliation, age/weight unit normalization, drug brand-to-generic mappings, and join deduplication).*
 
 ---
 
 ## 6. Interview & Career Readiness
 
 For interviewers and recruiters:
-- **Project Walkthrough & Technical Questions:** Review [docs/INTERVIEW_PREPARATION.md](file:///Users/vandy/Pharmaceutical-Analysis/docs/INTERVIEW_PREPARATION.md) for 25 in-depth technical and consulting questions.
-- **Consulting Insights & Recommendations:** Review [docs/BUSINESS_INSIGHTS.md](file:///Users/vandy/Pharmaceutical-Analysis/docs/BUSINESS_INSIGHTS.md) for data-driven strategic actions.
-- **Resume Bullets:** Review [docs/RESUME_BULLETS.md](file:///Users/vandy/Pharmaceutical-Analysis/docs/RESUME_BULLETS.md) for ATS-ready, quantified bullets.
+- **Project Walkthrough & Technical Questions:** Review [docs/INTERVIEW_PREPARATION.md](docs/INTERVIEW_PREPARATION.md) for 25 in-depth technical and consulting questions.
+- **Consulting Insights & Recommendations:** Review [docs/BUSINESS_INSIGHTS.md](docs/BUSINESS_INSIGHTS.md) for data-driven strategic actions.
+- **Resume Bullets:** Review [docs/RESUME_BULLETS.md](docs/RESUME_BULLETS.md) for ATS-ready, quantified bullets for both commercial operations and pharmacovigilance.
+- **Data Dictionary:** Review [docs/DATA_DICTIONARY.md](docs/DATA_DICTIONARY.md) for relational star schema attributes and definitions.
+- **Known Limitations & Caveats:** Review [docs/KNOWN_LIMITATIONS.md](docs/KNOWN_LIMITATIONS.md) for full scientific and synthetic disclosures.
 
 ---
 
-## 7. Pharmacovigilance Data Engineering Notes & FAERS Limitations
+## 7. Critical FAERS Scientific Limitations & Methodology
 
-The repository includes a secondary clinical safety pipeline (`etl/` and `app/`) ingesting adverse event reports from the openFDA / FDA Adverse Event Reporting System (FAERS):
-- **API Extraction Limit:** The extract script (`etl/extract.py`) paginates up to **10 pages of 100 reports (1,000 reports per drug maximum)** to respect openFDA rate limits and ensure fast local reproducibility.
-- **FAERS Spontaneous Reporting Limitations:** FAERS is a post-marketing surveillance database populated by voluntary spontaneous reports from healthcare professionals and consumers. It has inherent reporting biases, duplicate entries, under-reporting, and lacks a denominator of total drug exposure. As such, FAERS data **cannot establish true adverse event incidence rates or epidemiological causation**, and is utilized here strictly to illustrate safety signal monitoring.
+The pharmacovigilance surveillance platform utilizes spontaneous reports from the FDA Adverse Event Reporting System (FAERS) via the openFDA API:
+
+> **Important Scientific Notice:**
+> 1. **Spontaneous Reporting Nature:** FAERS is a spontaneous adverse-event reporting system. Reports are voluntarily submitted by healthcare professionals, consumers, and manufacturers.
+> 2. **Incompleteness & Duplication:** Reports may be incomplete, unverified, or duplicated across reporters.
+> 3. **Absence of Causality:** The existence of a report does not establish that the drug caused the adverse event. Causality cannot be inferred from FAERS data alone.
+> 4. **No Incidence Denominators:** Total patient drug exposure (denominators) is not available in FAERS. Consequently, report counts cannot calculate adverse event incidence, prevalence, or true comparative safety rates.
+> 5. **Reporting Biases:** Reporting rates are influenced by publicity, market tenure, media scrutiny, and regulatory alerts.
+> 6. **Analytical Purpose:** Drug-reaction associations are exploratory signals for clinical investigation, not confirmed safety determinations.
+> 7. **Module Independence:** The commercial analytics sales data (Module 1) and FAERS safety data (Module 2) operate independently and are not linked to imply that commercial revenue directly causes reported adverse events.

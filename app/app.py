@@ -11,8 +11,12 @@ Routes:
 """
 import os
 import json
-import psycopg2
-import psycopg2.extras
+import logging
+try:
+    import psycopg2
+    import psycopg2.extras
+except ImportError:
+    psycopg2 = None
 import plotly.graph_objects as go
 from plotly.utils import PlotlyJSONEncoder
 from flask import Flask, render_template, jsonify, request
@@ -20,6 +24,7 @@ from dotenv import load_dotenv
 from urllib.parse import urlparse
 
 load_dotenv()
+log = logging.getLogger(__name__)
 
 app = Flask(
     __name__,
@@ -72,11 +77,22 @@ def get_db():
     )
 
 def query(sql, params=None):
-    conn = get_db()
+    """
+    Executes a query with safe error handling and connection teardown.
+    Returns an empty list if DB connection or query fails, avoiding unhandled 500s.
+    """
+    try:
+        conn = get_db()
+    except Exception as e:
+        log.warning(f"Database connection unavailable: {e}")
+        return []
     try:
         with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
             cur.execute(sql, params)
             return [dict(r) for r in cur.fetchall()]
+    except Exception as e:
+        log.error(f"SQL execution error: {e}")
+        return []
     finally:
         conn.close()
 
@@ -103,13 +119,16 @@ def get_kpis(drug_name=None):
         {base_filter}
     """
     rows = query(sql, params or None)
-    return rows[0] if rows else {}
+    return rows[0] if rows else {
+        "total_reports": 0, "serious_reports": 0, "death_reports": 0, "pct_serious": 0.0
+    }
 
 def get_report_counts_by_drug():
     return query("""
         SELECT d.generic_name,
                COUNT(DISTINCT r.id) AS report_count,
-               COUNT(DISTINCT r.id) FILTER (WHERE r.serious = TRUE) AS serious_count
+               COUNT(DISTINCT r.id) FILTER (WHERE r.serious = TRUE) AS serious_count,
+               COUNT(DISTINCT r.id) FILTER (WHERE r.serious_death = TRUE) AS death_count
         FROM drugs d
         JOIN reports r ON r.id = d.report_id
         WHERE d.drug_role = '1'
@@ -119,7 +138,7 @@ def get_report_counts_by_drug():
 
 def get_top_reactions(drug_name, limit=15):
     return query("""
-        SELECT rx.reaction_term, COUNT(*) AS n
+        SELECT rx.reaction_term, COUNT(DISTINCT r.id) AS n
         FROM reactions rx
         JOIN reports r ON r.id = rx.report_id
         JOIN drugs d   ON d.report_id = r.id
@@ -159,7 +178,7 @@ def get_comeds(drug_name, limit=12):
 
 def get_sex_distribution(drug_name):
     return query("""
-        SELECT COALESCE(p.sex, 'unknown') AS sex, COUNT(*) AS n
+        SELECT COALESCE(p.sex, 'unknown') AS sex, COUNT(DISTINCT r.id) AS n
         FROM patients p
         JOIN reports r ON r.id = p.report_id
         JOIN drugs d   ON d.report_id = r.id
@@ -168,17 +187,48 @@ def get_sex_distribution(drug_name):
         GROUP BY p.sex
     """, (f"%{drug_name}%", f"%{drug_name}%"))
 
+def get_age_distribution(drug_name):
+    return query("""
+        SELECT
+            CASE
+                WHEN p.age_years < 18 THEN '<18 Pediatric'
+                WHEN p.age_years BETWEEN 18 AND 44 THEN '18-44 Young Adult'
+                WHEN p.age_years BETWEEN 45 AND 64 THEN '45-64 Middle Age'
+                WHEN p.age_years >= 65 THEN '65+ Geriatric'
+                ELSE 'Unknown'
+            END AS age_group,
+            COUNT(DISTINCT r.id) AS n
+        FROM patients p
+        JOIN reports r ON r.id = p.report_id
+        JOIN drugs d   ON d.report_id = r.id
+        WHERE d.drug_role = '1'
+          AND (LOWER(d.generic_name) LIKE %s OR LOWER(d.medicinal_product) LIKE %s)
+        GROUP BY 1
+        ORDER BY 1
+    """, (f"%{drug_name}%", f"%{drug_name}%"))
+
+def get_drug_role_counts(drug_name):
+    return query("""
+        SELECT
+            COALESCE(d.drug_role_label, 'unknown') AS role,
+            COUNT(DISTINCT r.id) AS n
+        FROM drugs d
+        JOIN reports r ON r.id = d.report_id
+        WHERE (LOWER(d.generic_name) LIKE %s OR LOWER(d.medicinal_product) LIKE %s)
+        GROUP BY d.drug_role_label
+    """, (f"%{drug_name}%", f"%{drug_name}%"))
+
 def get_reaction_heatmap():
     return query("""
         WITH top_reactions AS (
-            SELECT reaction_term, COUNT(*) AS n
+            SELECT reaction_term, COUNT(DISTINCT report_id) AS n
             FROM reactions
             WHERE reaction_term IS NOT NULL
             GROUP BY reaction_term
             ORDER BY n DESC
             LIMIT 10
         )
-        SELECT d.generic_name, rx.reaction_term, COUNT(*) AS n
+        SELECT d.generic_name, rx.reaction_term, COUNT(DISTINCT r.id) AS n
         FROM reactions rx
         JOIN reports r ON r.id = rx.report_id
         JOIN drugs d   ON d.report_id = r.id
@@ -212,7 +262,7 @@ def get_drug_summary():
 
 def get_top_drugs(drug_summary, n=5):
     sorted_drugs = sorted(drug_summary, key=lambda x: x["total_reports"], reverse=True)[:n]
-    max_count = sorted_drugs[0]["total_reports"] if sorted_drugs else 1
+    max_count = sorted_drugs[0]["total_reports"] if sorted_drugs and sorted_drugs[0]["total_reports"] > 0 else 1
     return [{
         "drug":  d["name"],
         "count": d["total_reports"],
@@ -221,7 +271,7 @@ def get_top_drugs(drug_summary, n=5):
 
 def get_top_reactions_all(limit=10):
     rows = query("""
-        SELECT rx.reaction_term, COUNT(*) AS n
+        SELECT rx.reaction_term, COUNT(DISTINCT r.id) AS n
         FROM reactions rx
         JOIN reports r ON r.id = rx.report_id
         JOIN drugs d   ON d.report_id = r.id
@@ -232,7 +282,7 @@ def get_top_reactions_all(limit=10):
         LIMIT %s
     """, (limit,))
     total_row = query("SELECT COUNT(DISTINCT id) AS n FROM reports")
-    total = total_row[0]["n"] if total_row else 1
+    total = total_row[0]["n"] if total_row and total_row[0]["n"] > 0 else 1
     return [{
         "reaction": r["reaction_term"].title(),
         "count":    int(r["n"]),
@@ -348,6 +398,37 @@ def chart_sex_pie(drug_name):
     ))
     return json.dumps(fig, cls=PlotlyJSONEncoder)
 
+def chart_age_bar(drug_name):
+    rows = get_age_distribution(drug_name)
+    if not rows:
+        return "{}"
+    fig = go.Figure(go.Bar(
+        x=[r["age_group"] for r in rows],
+        y=[r["n"] for r in rows],
+        marker_color=CHART_COLORS["secondary"],
+    ))
+    fig.update_layout(**_dark_layout(
+        title="Patient age distribution (years)", height=300,
+        margin=dict(l=40, r=20, t=50, b=40),
+    ))
+    return json.dumps(fig, cls=PlotlyJSONEncoder)
+
+def chart_role_donut(drug_name):
+    rows = get_drug_role_counts(drug_name)
+    if not rows:
+        return "{}"
+    fig = go.Figure(go.Pie(
+        labels=[r["role"].title() for r in rows],
+        values=[r["n"] for r in rows],
+        hole=0.45,
+        marker_colors=[CHART_COLORS["primary"], CHART_COLORS["warning"], CHART_COLORS["secondary"], CHART_COLORS["grid"]],
+    ))
+    fig.update_layout(**_dark_layout(
+        title="Drug role in reports (suspect vs concomitant)", height=300,
+        margin=dict(l=20, r=20, t=50, b=20),
+    ))
+    return json.dumps(fig, cls=PlotlyJSONEncoder)
+
 # ------------------------------------------------------------------
 # Routes
 # ------------------------------------------------------------------
@@ -383,6 +464,8 @@ def drug_view(drug_name):
         time_chart=chart_time_series(drug_name),
         comed_chart=chart_comeds(drug_name),
         sex_chart=chart_sex_pie(drug_name),
+        age_chart=chart_age_bar(drug_name),
+        role_chart=chart_role_donut(drug_name),
     )
 
 @app.route("/api/data/<drug_name>")
@@ -398,12 +481,35 @@ def api_data(drug_name):
 
 @app.route("/health")
 def health():
+    """
+    Process liveness probe: verifies that the web application process is running.
+    Always returns HTTP 200 with status: healthy.
+    """
+    return jsonify({
+        "status": "healthy",
+        "service": "pharmacovigilance-analytics",
+        "version": "1.0.0"
+    }), 200
+
+@app.route("/ready")
+def ready():
+    """
+    Database readiness probe: verifies active PostgreSQL connectivity.
+    Returns HTTP 200 if connected, or HTTP 503 if the database is unavailable.
+    """
     try:
         conn = get_db()
         conn.close()
-        return jsonify({"status": "ok", "db": "connected"})
+        return jsonify({
+            "status": "ready",
+            "database": "connected"
+        }), 200
     except Exception as e:
-        return jsonify({"status": "error", "message": str(e)}), 500
+        return jsonify({
+            "status": "not_ready",
+            "database": "disconnected",
+            "error": str(e)
+        }), 503
 
 if __name__ == "__main__":
     app.run(debug=True, port=5000)

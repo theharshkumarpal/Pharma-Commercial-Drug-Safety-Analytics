@@ -418,6 +418,22 @@
 
 <main class="main">
   {% block content %}{% endblock %}
+
+  <footer style="margin-top: 48px; padding-top: 24px; border-top: 1px solid var(--border); font-size: 0.8rem; color: var(--muted); line-height: 1.6;">
+    <div style="background: rgba(255,179,71,0.06); border: 1px solid rgba(255,179,71,0.25); border-radius: 8px; padding: 14px 18px; margin-bottom: 16px;">
+      <strong style="color: var(--warn); display: flex; align-items: center; gap: 6px; margin-bottom: 4px;">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>
+        Scientific Disclaimer & FAERS Spontaneous Reporting Limitations
+      </strong>
+      <p style="margin: 0; color: #d6cbd1;">
+        FAERS data represent spontaneous adverse-event reports submitted by healthcare professionals, consumers, and manufacturers. Report counts do not establish causality or incidence and should not be interpreted as comparative drug safety rates. Reporting frequency can be influenced by marketing volume, media publicity, and voluntary reporting behavior. Patient exposure denominators are not available.
+      </p>
+    </div>
+    <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;">
+      <span>Pharmacovigilance Analytics & Drug Safety Platform · ICH E2B(R3) Aligned</span>
+      <span style="font-family: 'DM Mono', monospace; font-size: 0.72rem;">FDA FAERS / openFDA API</span>
+    </div>
+  </footer>
 </main>
 </div>
 
