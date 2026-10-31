@@ -102,6 +102,6 @@ All documentation has been updated to reflect the exact, unadjusted empirical fa
 
 - **PBIX Binary File:** Direct graphical editing of `.pbix` binary files is unsupported in this headless terminal environment. No `.pbix` binary was modified.
 - **Implemented Power BI Assets:**
-  1. Complete, copy-paste ready DAX measures library in [dashboards/powerbi/dax_measures.txt](dashboards/powerbi/dax_measures.txt) (17 core measures).
-  2. Complete 6-page visual specification, wireframe layout, and slicer configuration guide in [docs/DASHBOARD_GUIDE.md](docs/DASHBOARD_GUIDE.md).
+  1. Complete, copy-paste ready DAX measures library in [dashboards/powerbi/dax_measures.txt](file:///Users/vandy/Pharmaceutical-Analysis/dashboards/powerbi/dax_measures.txt) (17 core measures).
+  2. Complete 6-page visual specification, wireframe layout, and slicer configuration guide in [docs/DASHBOARD_GUIDE.md](file:///Users/vandy/Pharmaceutical-Analysis/docs/DASHBOARD_GUIDE.md).
 - **Interview Positioning:** The candidate should state: *"I designed the dimensional star schema and wrote the complete DAX measures library and consulting wireframes for Power BI, modeling relationships as 1-to-many single directional joins against our processed database."*
